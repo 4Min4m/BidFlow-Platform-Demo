@@ -1,0 +1,74 @@
+name: CI/CD Pipeline for BidFlow App
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  GKE_PROJECT: velvety-pagoda-474218-r6
+  GKE_CLUSTER: bidflow-autopilot
+  GKE_ZONE: us-central1
+  IMAGE: gcr.io/${{ env.GKE_PROJECT }}/bidflow-ruby
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup GCP
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Setup gcloud
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.GKE_PROJECT }}
+
+    - name: Configure Docker
+      run: gcloud auth configure-docker
+
+    - name: Build Docker image
+      run: |
+        cd app/ruby-bidder
+        docker build -t ${{ env.IMAGE }}:${{ github.sha }} .
+        docker push ${{ env.IMAGE }}:${{ github.sha }}
+
+    - name: Run tests (simple health check)
+      run: |
+        cd app/ruby-bidder
+        docker run --rm ${{ env.IMAGE }}:${{ github.sha }} curl -f http://localhost:4567/health || exit 1  # Mock test gate
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup GCP
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Setup gcloud
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.GKE_PROJECT }}
+
+    - name: Get GKE credentials
+      run: gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --zone ${{ env.GKE_ZONE }}
+
+    - name: Setup Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: v3.15.0
+
+    - name: Deploy with Helm (mock ArgoCD sync)
+      run: |
+        helm upgrade --install bidflow-app helm/ --values helm/values.yaml --set image.tag=${{ github.sha }} --namespace bidflow
