@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "bidflow-app.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "bidflow-app.name" . }}
+    spec:
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        ports:
+        - containerPort: 4567
+        env:
+        - name: RUBY_GC_HEAP_GROWTH_FACTOR
+          value: {{ .Values.env.RUBY_GC_HEAP_GROWTH_FACTOR | quote }}
+        volumeMounts:
+        - name: redis-storage
+          mountPath: /data/redis
+      volumes:
+      - name: redis-storage
+        persistentVolumeClaim:
+          claimName: redis-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+  - port: {{ .Values.service.port }}
+    targetPort: 4567
+  selector:
+    app: {{ include "bidflow-app.name" . }}

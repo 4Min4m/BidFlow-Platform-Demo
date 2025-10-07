@@ -1,0 +1,9 @@
+replicas: 1
+image:
+  repository: gcr.io/velvety-pagoda-474218-r6/bidflow-ruby
+  tag: "v0.1"
+env:
+  RUBY_GC_HEAP_GROWTH_FACTOR: "1.1"  # From Transcript 1
+service:
+  type: ClusterIP
+  port: 4567
