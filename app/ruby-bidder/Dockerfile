@@ -2,7 +2,7 @@
 FROM ruby:3.2-slim AS builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y curl
-RUN gem install sinatra redis --no-document
+RUN gem install sinatra redis rackup puma --no-document
 
 # Runtime stage
 FROM ruby:3.2-slim

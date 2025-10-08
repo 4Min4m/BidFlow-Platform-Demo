@@ -34,9 +34,7 @@ jobs:
       run: |
         cd app/ruby-bidder
         docker run -d -p 4567:4567 --name test-bidflow '${{ env.IMAGE }}:${{ github.sha }}'
-        sleep 2
-        docker logs test-bidflow
-        sleep 3
+        sleep 5
         curl -f http://localhost:4567/health || { echo "Health check failed"; docker rm -f test-bidflow; exit 1; }
         docker rm -f test-bidflow
   deploy:
