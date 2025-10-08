@@ -35,13 +35,13 @@ jobs:
     - name: Build Docker image
       run: |
         cd app/ruby-bidder
-        docker build -t ${{ env.IMAGE }}:${{ github.sha }} .
-        docker push ${{ env.IMAGE }}:${{ github.sha }}
+        docker build -t '${{ env.IMAGE }}:${{ github.sha }}' .
+        docker push '${{ env.IMAGE }}:${{ github.sha }}'
 
     - name: Run tests (simple health check)
       run: |
         cd app/ruby-bidder
-        docker run --rm ${{ env.IMAGE }}:${{ github.sha }} curl -f http://localhost:4567/health || exit 1  # Mock test gate
+        docker run --rm '${{ env.IMAGE }}:${{ github.sha }}' curl -f http://localhost:4567/health || exit 1
 
   deploy:
     needs: build
@@ -71,4 +71,4 @@ jobs:
 
     - name: Deploy with Helm (mock ArgoCD sync)
       run: |
-        helm upgrade --install bidflow-app helm/ --values helm/values.yaml --set image.tag=${{ github.sha }} --namespace bidflow
+        helm upgrade --install bidflow-app helm/ --values helm/values.yaml --set image.tag='${{ github.sha }}' --namespace bidflow
