@@ -333,17 +333,7 @@ build-iPhoneSimulator/
 
 ### Docker ###
 # Adopted from https://github.com/docker/docker/blob/master/.gitignore
-
 **/.dockerignore
-**/Dockerfile
-**/Dockerfile-*
-**/docker-compose*
-**/.dockerignore
-
-# Normal Docker
-Dockerfile
-Dockerfile-*
-docker-compose*
 .dockerignore
 
 # These files are sensitive and should not be included in version control
