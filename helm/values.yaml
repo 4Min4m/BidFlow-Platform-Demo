@@ -7,3 +7,15 @@ env:
 service:
   type: ClusterIP
   port: 4567
+livenessProbe:
+  httpGet:
+    path: /live
+    port: 4567
+  initialDelaySeconds: 10
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 4567
+  initialDelaySeconds: 5
+  periodSeconds: 5

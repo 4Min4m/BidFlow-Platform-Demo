@@ -49,3 +49,11 @@ end
 get '/health' do
   'OK'
 end
+
+get '/ready' do
+  'Ready'
+end
+
+get '/live' do
+  'Alive'
+end

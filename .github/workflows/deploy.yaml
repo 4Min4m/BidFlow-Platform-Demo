@@ -12,6 +12,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      FULL_IMAGE: gcr.io/${{ env.GKE_PROJECT }}/bidflow-ruby
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -28,12 +30,12 @@ jobs:
     - name: Build Docker image
       run: |
         cd app/ruby-bidder
-        docker build -t '${{ env.IMAGE }}:${{ github.sha }}' .
-        docker push '${{ env.IMAGE }}:${{ github.sha }}'
-    - name: Run tests (simple health check)
+        docker build -t '${{ env.FULL_IMAGE }}:${{ github.sha }}' .
+        docker push '${{ env.FULL_IMAGE }}:${{ github.sha }}'
+    - name: Run tests (health check)
       run: |
         cd app/ruby-bidder
-        docker run -d -p 4567:4567 --name test-bidflow '${{ env.IMAGE }}:${{ github.sha }}'
+        docker run -d -p 4567:4567 --name test-bidflow '${{ env.FULL_IMAGE }}:${{ github.sha }}'
         sleep 5
         curl -f http://localhost:4567/health || { echo "Health check failed"; docker rm -f test-bidflow; exit 1; }
         docker rm -f test-bidflow
@@ -58,6 +60,16 @@ jobs:
       uses: azure/setup-helm@v4
       with:
         version: v3.15.0
-    - name: Deploy with Helm (mock ArgoCD sync)
+    - name: Create namespace if needed
+      run: kubectl create namespace bidflow --dry-run=client -o yaml | kubectl apply -f -
+    - name: Deploy with Helm
       run: |
-        helm upgrade --install bidflow-app helm/ --values helm/values.yaml --set image.tag='${{ github.sha }}' --namespace bidflow
+        helm upgrade --install bidflow-app helm/ \
+          --values helm/values.yaml \
+          --set image.tag='${{ github.sha }}' \
+          --namespace bidflow \
+          --create-namespace
+    - name: Verify deployment
+      run: |
+        kubectl rollout status deployment/bidflow-app -n bidflow --timeout=300s
+        kubectl get pods -n bidflow -l app.kubernetes.io/name=bidflow-app
