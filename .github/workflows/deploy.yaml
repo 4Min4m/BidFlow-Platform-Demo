@@ -8,12 +8,12 @@ env:
   GKE_PROJECT: velvety-pagoda-474218-r6
   GKE_CLUSTER: bidflow-autopilot
   GKE_ZONE: us-central1
-  IMAGE: gcr.io/velvety-pagoda-474218-r6/bidflow-ruby
+  IMAGE: gcr.io/velvety-pagoda-474218-r6/bidflow-ruby  # Hardcoded for workflow env
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      FULL_IMAGE: gcr.io/${{ env.GKE_PROJECT }}/bidflow-ruby
+    env:  # Job-level env—no expressions needed here now
+      FULL_IMAGE: gcr.io/velvety-pagoda-474218-r6/bidflow-ruby  # Hardcoded to match IMAGE
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'  # Only on main pushes
     steps:
     - name: Checkout
       uses: actions/checkout@v4
