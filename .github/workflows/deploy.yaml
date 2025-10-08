@@ -37,12 +37,13 @@ jobs:
         cd app/ruby-bidder
         docker run -d -p 4567:4567 --name test-bidflow '${{ env.FULL_IMAGE }}:${{ github.sha }}'
         sleep 5
+        docker logs test-bidflow
         curl -f http://localhost:4567/health || { echo "Health check failed"; docker rm -f test-bidflow; exit 1; }
         docker rm -f test-bidflow
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'  # Only on main pushes
+    if: github.ref == 'refs/heads/main'
     steps:
     - name: Checkout
       uses: actions/checkout@v4

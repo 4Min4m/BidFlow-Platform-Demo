@@ -12,4 +12,4 @@ RUN apt-get update && apt-get install -y curl
 COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY app.rb .
 EXPOSE 4567
-CMD ["bundle", "exec", "ruby", "app.rb", "-o", "0.0.0.0"]
+CMD ["bundle", "exec", "ruby", "app.rb", "-p", "4567", "-o", "0.0.0.0"]
