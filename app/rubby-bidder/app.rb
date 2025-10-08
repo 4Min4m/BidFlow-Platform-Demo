@@ -34,6 +34,10 @@ post '/bid' do
   end
 end
 
+get '/metrics' do
+  "bids_total{status=\"received\"} 1\n"
+end
+
 get '/health' do
   'OK'
 end

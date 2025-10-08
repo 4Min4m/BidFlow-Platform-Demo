@@ -12,6 +12,10 @@ spec:
     metadata:
       labels:
         app: {{ include "bidflow-app.name" . }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4567"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: {{ .Chart.Name }}
