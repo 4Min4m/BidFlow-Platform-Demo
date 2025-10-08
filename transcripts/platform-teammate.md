@@ -60,7 +60,7 @@ A :
     "auction_id":"...",
     "user_id":"...",
     "amount":123.45,
-    "reason":"duplicate_bid" // standardized reason codes
+    "reason":"duplicate_bid"
   }
   ```
 * **Use ingest pipeline to validate fields**: check required fields (`bid_id`, `auction_id`, `amount`) and type coercion.
