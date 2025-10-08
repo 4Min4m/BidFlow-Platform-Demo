@@ -1,11 +1,18 @@
 require 'redis'
 require 'json'
-require 'sinatra'  # gem install sinatra redis (local run)
+require 'sinatra'
 
 # GC Tuning for high-traffic (from transcript)
 ENV['RUBY_GC_HEAP_GROWTH_FACTOR'] = '1.1' if ENV['RUBY_GC_HEAP_GROWTH_FACTOR'].nil?
 
-redis = Redis.new(host: 'localhost', port: 6379)  # Local for now
+# Lazy Redis connection: Only init when needed (e.g., on /bid)
+def get_redis
+  @redis ||= Redis.new(host: 'localhost', port: 6379)
+rescue Redis::CannotConnectError => e
+  # For tests/demo: Log and proceed without Redis (or raise in prod)
+  puts "Redis unavailable: #{e.message}. Skipping storage."
+  nil
+end
 
 post '/bid' do
   begin
@@ -16,8 +23,9 @@ post '/bid' do
     # Validate: Amount > 0
     raise "Invalid bid amount" if amount <= 0
     
-    # Store in Redis
-    redis.set("bid:#{bid_id}", amount.to_s)
+    # Store in Redis (if available)
+    redis = get_redis
+    redis.set("bid:#{bid_id}", amount.to_s) if redis
     
     # Log JSON event
     log_event = { event: 'bid_received', id: bid_id, amount: amount, timestamp: Time.now.utc.iso8601 }.to_json
