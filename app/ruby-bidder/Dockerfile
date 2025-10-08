@@ -1,7 +1,7 @@
 # Build stage
 FROM ruby:3.2-slim AS builder
 WORKDIR /app
-RUN apt-get update && apt-get install -y curl
+RUN apt-get update && apt-get install -y curl build-essential ruby-dev
 RUN gem install sinatra redis rackup puma --no-document
 
 # Runtime stage
