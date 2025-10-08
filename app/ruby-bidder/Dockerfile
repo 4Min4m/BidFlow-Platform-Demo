@@ -10,7 +10,7 @@ FROM ruby:3.2-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y curl
 COPY --from=builder /usr/local/bundle /usr/local/bundle
-COPY Gemfile Gemfile.lock ./  # Added: For bundle exec to find them
+COPY Gemfile Gemfile.lock ./
 COPY app.rb .
 EXPOSE 4567
 CMD ["bundle", "exec", "ruby", "app.rb", "-p", "4567", "-o", "0.0.0.0"]
