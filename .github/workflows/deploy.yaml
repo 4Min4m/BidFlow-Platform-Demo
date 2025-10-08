@@ -33,7 +33,10 @@ jobs:
     - name: Run tests (simple health check)
       run: |
         cd app/ruby-bidder
-        docker run --rm '${{ env.IMAGE }}:${{ github.sha }}' curl -f http://localhost:4567/health || exit 1
+        docker run -d -p 4567:4567 --name test-bidflow '${{ env.IMAGE }}:${{ github.sha }}'
+        sleep 5
+        curl -f http://localhost:4567/health || { echo "Health check failed"; docker rm -f test-bidflow; exit 1; }
+        docker rm -f test-bidflow
   deploy:
     needs: build
     runs-on: ubuntu-latest
