@@ -2,16 +2,18 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "bidflow-app.fullname" . }}
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
-      app: {{ include "bidflow-app.name" . }}
+      {{- include "bidflow-app.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: {{ include "bidflow-app.name" . }}
+        {{- include "bidflow-app.selectorLabels" . | nindent 8 }}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "4567"
@@ -19,29 +21,33 @@ spec:
     spec:
       containers:
       - name: {{ .Chart.Name }}
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         ports:
-        - containerPort: 4567
+        - containerPort: {{ .Values.service.port }}
         env:
         - name: RUBY_GC_HEAP_GROWTH_FACTOR
           value: {{ .Values.env.RUBY_GC_HEAP_GROWTH_FACTOR | quote }}
-        volumeMounts:
-        - name: redis-storage
-          mountPath: /data/redis
-      volumes:
-      - name: redis-storage
-        persistentVolumeClaim:
-          claimName: redis-pvc
+        {{- with .Values.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "bidflow-app.fullname" . }}
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
   namespace: {{ .Release.Namespace }}
 spec:
   type: {{ .Values.service.type }}
   ports:
   - port: {{ .Values.service.port }}
-    targetPort: 4567
+    targetPort: {{ .Values.service.port }}
+    protocol: TCP
   selector:
-    app: {{ include "bidflow-app.name" . }}
+    {{- include "bidflow-app.selectorLabels" . | nindent 4 }}

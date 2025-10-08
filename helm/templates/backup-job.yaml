@@ -1,16 +1,21 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: redis-backup
+  name: {{ include "bidflow-app.fullname" . }}-redis-backup
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
   namespace: {{ .Release.Namespace }}
 spec:
   schedule: "0 */6 * * *"  # Every 6 hours
   jobTemplate:
     spec:
       template:
+        metadata:
+          labels:
+            {{- include "bidflow-app.labels" . | nindent 12 }}
         spec:
           containers:
           - name: backup
             image: redis:alpine
-            command: ["sh", "-c", "redis-cli --rdb /data/dump.rdb && gsutil cp /data/dump.rdb gs://bidflow-backups/"]  # Mock gsutil
+            command: ["sh", "-c", "redis-cli --rdb /data/dump.rdb && gsutil cp /data/dump.rdb gs://bidflow-backups/"]  # Mock gsutil; add SA in prod
           restartPolicy: OnFailure
