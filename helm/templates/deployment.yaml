@@ -25,8 +25,23 @@ spec:
         ports:
         - containerPort: {{ .Values.service.port }}
         env:
+        # Language-aware tuning (dev teammate: Ruby vs. Go GC)
+        {{- if eq .Values.language "ruby" }}
         - name: RUBY_GC_HEAP_GROWTH_FACTOR
           value: {{ .Values.env.RUBY_GC_HEAP_GROWTH_FACTOR | quote }}
+        - name: RUBY_GC_MALLOC_LIMIT
+          value: "16777216"
+        {{- else if eq .Values.language "go" }}
+        - name: GOGC
+          value: "{{ .Values.go.gc | default "100" }}"
+        - name: GODEBUG
+          value: "{{ .Values.go.debug | default "gctrace=0" }}"
+        {{- end }}
+        # A/B variant (product teammate: Experiment TTLs)
+        - name: AB_VARIANT
+          value: {{ .Values.env.AB_VARIANT | quote }}
+        - name: REDIS_TTL
+          value: {{ .Values.env.REDIS_TTL | quote }}
         {{- with .Values.livenessProbe }}
         livenessProbe:
           {{- toYaml . | nindent 10 }}

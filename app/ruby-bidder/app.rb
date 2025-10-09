@@ -23,13 +23,27 @@ post '/bid' do
     # Validate: Amount > 0
     raise "Invalid bid amount" if amount <= 0
     
-    # Store in Redis (if available)
-    redis = get_redis
-    redis.set("bid:#{bid_id}", amount.to_s) if redis
+    # A/B Experiment: Variant-based Redis TTL (product teammate: Test expiration impacts)
+    redis_ttl = case ENV['AB_VARIANT']
+                when 'B' then (ENV['REDIS_TTL'] || 120).to_i
+                else (ENV['REDIS_TTL'] || 30).to_i
+                end
     
-    # Log JSON event
-    log_event = { event: 'bid_received', id: bid_id, amount: amount, timestamp: Time.now.utc.iso8601 }.to_json
-    puts log_event  # For demo; in prod, to ELK
+    # Store in Redis (if available) with TTL
+    redis = get_redis
+    if redis
+      redis.set("bid:#{bid_id}", amount.to_s, ex: redis_ttl)
+    end
+    
+    # Log JSON event (structured for ELK)
+    log_event = { 
+      event: 'bid_received', 
+      id: bid_id, 
+      amount: amount, 
+      ab_variant: ENV['AB_VARIANT'] || 'A',
+      timestamp: Time.now.utc.iso8601 
+    }.to_json
+    puts log_event  # For demo; in prod, to ELK with trace_id
     
     status 201
     { status: 'Bid stored' }.to_json
@@ -50,10 +64,10 @@ get '/health' do
   'OK'
 end
 
-get '/ready' do
-  'Ready'
+get '/live' do  # Liveness probe
+  'Alive'
 end
 
-get '/live' do
-  'Alive'
+get '/ready' do  # Readiness probe
+  'Ready'
 end
