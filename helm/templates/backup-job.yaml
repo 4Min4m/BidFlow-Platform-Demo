@@ -14,24 +14,28 @@ spec:
           labels:
             {{- include "bidflow-app.labels" . | nindent 12 }}
         spec:
+          serviceAccountName: {{ .Values.backup.serviceAccount | default "default" }}  # Prod: Workload Identity
           containers:
           - name: backup
-            image: redis:alpine
-            command: ["sh", "-c"]
+            image: google/cloud-sdk:alpine
+            command: ["/bin/sh", "-c"]
             args:
             - |
-              apk add --no-cache gsutil && \
-              redis-cli -h $REDIS_HOST SAVE && \
-              gsutil cp /data/dump.rdb gs://bidflow-backups/$(date +%Y%m%d-%H%M%S).rdb && \
-              echo "Backup complete"
+              echo "Triggering Redis backup..."
+              redis-cli -h $REDIS_HOST BGSAVE
+              sleep 10  # Wait for RDB
+              gsutil cp /data/dump.rdb gs://$GCS_BUCKET/$(date +%Y%m%d-%H%M%S).rdb
+              echo "Backup complete to GCS"
             env:
             - name: REDIS_HOST
-              value: "{{ include "bidflow-app.fullname" . }}-redis"  # StatefulSet service
+              value: "{{ include "bidflow-app.fullname" . }}-redis"
+            - name: GCS_BUCKET
+              value: {{ .Values.backup.gcs.bucket | quote }}
             volumeMounts:
-            - name: redis-storage
+            - name: redis-data
               mountPath: /data
           restartPolicy: OnFailure
           volumes:
-          - name: redis-storage
+          - name: redis-data
             persistentVolumeClaim:
-              claimName: redis-pvc
+              claimName: {{ include "bidflow-app.fullname" . }}-redis-data-{{ .Release.Revision }}

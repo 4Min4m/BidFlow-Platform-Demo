@@ -32,6 +32,11 @@ spec:
             cpu: 500m
             memory: 512Mi
         env:
+        # Redis connection (matches StatefulSet service)
+        - name: REDIS_HOST
+          value: {{ include "bidflow-app.fullname" . }}-redis
+        - name: REDIS_PORT
+          value: "6379"
         # Language-aware tuning (dev teammate: Ruby vs. Go GC)
         {{- if eq .Values.language "ruby" }}
         - name: RUBY_GC_HEAP_GROWTH_FACTOR
