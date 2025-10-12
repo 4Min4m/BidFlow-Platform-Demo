@@ -12,4 +12,5 @@ COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY Gemfile Gemfile.lock ./
 COPY app.rb .
 EXPOSE 4567
-CMD ["bundle", "exec", "ruby", "app.rb", "-p", "4567", "-o", "0.0.0.0", "-b", "0.0.0.0"]
+ENV RACK_ENV=production
+CMD ["bundle", "exec", "ruby", "app.rb", "-p", "4567", "-b", "0.0.0.0"]
