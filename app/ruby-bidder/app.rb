@@ -2,6 +2,9 @@ require 'redis'
 require 'json'
 require 'sinatra'
 
+set :bind, '0.0.0.0'
+set :port, 4567
+
 # GC Tuning for high-traffic (from transcript)
 ENV['RUBY_GC_HEAP_GROWTH_FACTOR'] = '1.1' if ENV['RUBY_GC_HEAP_GROWTH_FACTOR'].nil?
 
