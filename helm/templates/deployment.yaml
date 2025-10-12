@@ -24,6 +24,13 @@ spec:
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         ports:
         - containerPort: {{ .Values.service.port }}
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
         env:
         # Language-aware tuning (dev teammate: Ruby vs. Go GC)
         {{- if eq .Values.language "ruby" }}

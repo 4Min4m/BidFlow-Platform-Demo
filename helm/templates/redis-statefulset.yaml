@@ -1,0 +1,11 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}-redis
+  namespace: {{ .Release.Namespace }}
+spec:
+  serviceName: {{ include "bidflow-app.fullname" . }}-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "bidflow-app.selectorLabels"

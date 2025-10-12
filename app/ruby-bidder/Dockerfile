@@ -8,7 +8,6 @@ RUN gem install bundler && bundle config set --local without 'development test' 
 # Runtime stage
 FROM ruby:3.2-slim
 WORKDIR /app
-RUN apt-get update && apt-get install -y curl
 COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY Gemfile Gemfile.lock ./
 COPY app.rb .

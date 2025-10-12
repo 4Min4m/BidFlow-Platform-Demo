@@ -17,5 +17,21 @@ spec:
           containers:
           - name: backup
             image: redis:alpine
-            command: ["sh", "-c", "redis-cli --rdb /data/dump.rdb && gsutil cp /data/dump.rdb gs://bidflow-backups/"]  # Mock gsutil; add SA in prod
+            command: ["sh", "-c"]
+            args:
+            - |
+              apk add --no-cache gsutil && \
+              redis-cli -h $REDIS_HOST SAVE && \
+              gsutil cp /data/dump.rdb gs://bidflow-backups/$(date +%Y%m%d-%H%M%S).rdb && \
+              echo "Backup complete"
+            env:
+            - name: REDIS_HOST
+              value: "{{ include "bidflow-app.fullname" . }}-redis"  # StatefulSet service
+            volumeMounts:
+            - name: redis-storage
+              mountPath: /data
           restartPolicy: OnFailure
+          volumes:
+          - name: redis-storage
+            persistentVolumeClaim:
+              claimName: redis-pvc
