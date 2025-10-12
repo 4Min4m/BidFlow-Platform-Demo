@@ -33,15 +33,9 @@ output "cluster_name" {
 
 output "setup_commands" {
   value = <<-EOT
-    Run these commands after cluster is created:
+    Run these command after cluster is created:
     
     1. Configure kubectl:
        gcloud container clusters get-credentials bidflow-autopilot --region=us-central1 --project=velvety-pagoda-474218-r6
-    
-    2. Create namespace:
-       kubectl create namespace bidflow
-    
-    3. Create PVC:
-       kubectl apply -f pvc.yaml
   EOT
 }

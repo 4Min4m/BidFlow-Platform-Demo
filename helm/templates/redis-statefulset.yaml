@@ -2,10 +2,82 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "bidflow-app.fullname" . }}-redis
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
   namespace: {{ .Release.Namespace }}
 spec:
   serviceName: {{ include "bidflow-app.fullname" . }}-redis
   replicas: 1
   selector:
     matchLabels:
-      {{- include "bidflow-app.selectorLabels"
+      {{- include "bidflow-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        {{- include "bidflow-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        command:
+        - redis-server
+        - --appendonly
+        - "yes"
+        - --save
+        - "900 1"
+        - --save
+        - "300 10"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        livenessProbe:
+          tcpSocket:
+            port: 6379
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}-redis
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+  namespace: {{ .Release.Namespace }}
+spec:
+  clusterIP: None  # Headless for StatefulSet
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis
+  selector:
+    {{- include "bidflow-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
