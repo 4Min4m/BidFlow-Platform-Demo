@@ -13,4 +13,4 @@ COPY Gemfile Gemfile.lock ./
 COPY app.rb .
 EXPOSE 4567
 ENV RACK_ENV=production
-CMD ["bundle", "exec", "ruby", "app.rb", "-p", "4567", "-b", "0.0.0.0"]
+CMD ["bundle", "exec", "puma", "-p", "4567", "-b", "tcp://0.0.0.0"]
