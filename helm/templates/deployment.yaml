@@ -71,7 +71,7 @@ metadata:
     {{- include "bidflow-app.labels" . | nindent 4 }}
   namespace: {{ .Release.Namespace }}
   annotations:
-    cloud.google.com/backend-config: '{"default": "{{ include "bidflow-app.fullname" . }}-backend-config"}'
+    cloud.google.com/backend-config: '{"ports": {"4567":"{{ include "bidflow-app.fullname" . }}-backend-config"}}'
     cloud.google.com/neg: '{"ingress": true}'
 spec:
   type: NodePort
@@ -79,5 +79,6 @@ spec:
   - port: {{ .Values.service.port }}
     targetPort: {{ .Values.service.port }}
     protocol: TCP
+    name: http
   selector:
     {{- include "bidflow-app.selectorLabels" . | nindent 4 }}
