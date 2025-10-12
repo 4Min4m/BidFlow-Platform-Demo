@@ -20,7 +20,7 @@ readinessProbe:
   httpGet:
     path: /ready
     port: 4567
-  initialDelaySeconds: 5
+  initialDelaySeconds: 30  # Increased for Redis boot
   periodSeconds: 5
 # Go-specific overrides (for polyglot self-service)
 go:
