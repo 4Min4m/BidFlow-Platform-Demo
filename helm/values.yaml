@@ -2,14 +2,17 @@ replicas: 1
 image:
   repository: gcr.io/velvety-pagoda-474218-r6/bidflow-ruby
   tag: "v0.1"
-language: ruby  # ruby or go; enables runtime tuning
+language: ruby  # ruby or go
 env:
   RUBY_GC_HEAP_GROWTH_FACTOR: "1.1"  # From Transcript 1
-  AB_VARIANT: "A"  # A/B for product experiments (e.g., Redis TTL)
-  REDIS_TTL: 30  # Seconds; overridden by variant in app.rb
+  AB_VARIANT: "A"  # A/B for product experiments
+  REDIS_TTL: 30
 service:
-  type: ClusterIP
+  type: NodePort  # Changed for Ingress
   port: 4567
+ingress:
+  enabled: true
+  staticIpName: ""
 livenessProbe:
   httpGet:
     path: /live
@@ -20,7 +23,7 @@ readinessProbe:
   httpGet:
     path: /ready
     port: 4567
-  initialDelaySeconds: 30  # Increased for Redis boot
+  initialDelaySeconds: 5
   periodSeconds: 5
 # Go-specific overrides (for polyglot self-service)
 go:
@@ -33,9 +36,10 @@ ab:
       redisTtl: 30
     B:
       redisTtl: 120
-# Backup config (for CronJob SA/bucket)
+# Backup configuration
 backup:
   enabled: true
-  serviceAccount: "default"  # Prod: Custom SA with Workload Identity
+  serviceAccount: default  # In production: use Workload Identity SA
+  schedule: "0 */6 * * *"
   gcs:
     bucket: "bidflow-backups"
