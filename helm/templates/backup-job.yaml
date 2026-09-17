@@ -1,0 +1,57 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}-redis-backup
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "bidflow-app.labels" . | nindent 12 }}
+            app.kubernetes.io/component: redis-backup
+        spec:
+          # serviceAccountName is a KSA bound to a GCP service account via
+          # Workload Identity (see serviceaccount.yaml + terraform/main.tf) —
+          # no downloaded JSON key ever touches the cluster.
+          serviceAccountName: {{ .Values.backup.serviceAccountName }}
+          automountServiceAccountToken: true
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+          - name: backup
+            image: google/cloud-sdk:alpine
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              set -e
+              echo "Triggering Redis BGSAVE via redis-cli..."
+              redis-cli -h "$REDIS_HOST" BGSAVE
+              sleep 10  # give the background save time to finish writing dump.rdb
+              gsutil cp /data/dump.rdb "gs://$GCS_BUCKET/$(date +%Y%m%d-%H%M%S).rdb"
+              echo "Backup complete to GCS"
+            env:
+            - name: REDIS_HOST
+              value: "{{ include "bidflow-app.fullname" . }}-redis"
+            - name: GCS_BUCKET
+              value: {{ .Values.backup.gcs.bucket | quote }}
+            securityContext:
+              runAsNonRoot: true
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+            volumeMounts:
+            - name: redis-data
+              mountPath: /data
+              readOnly: true
+          restartPolicy: OnFailure
+          volumes:
+          - name: redis-data
+            persistentVolumeClaim:
+              claimName: redis-data-{{ include "bidflow-app.fullname" . }}-redis-0
+{{- end }}
