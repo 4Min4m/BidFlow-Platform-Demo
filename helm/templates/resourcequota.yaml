@@ -1,0 +1,16 @@
+{{- if .Values.security.resourceQuota.enabled }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}-quota
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
+spec:
+  hard:
+    pods: {{ .Values.security.resourceQuota.pods | quote }}
+    requests.cpu: {{ .Values.security.resourceQuota.requestsCpu | quote }}
+    requests.memory: {{ .Values.security.resourceQuota.requestsMemory | quote }}
+    limits.cpu: {{ .Values.security.resourceQuota.limitsCpu | quote }}
+    limits.memory: {{ .Values.security.resourceQuota.limitsMemory | quote }}
+{{- end }}
