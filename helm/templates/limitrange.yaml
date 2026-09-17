@@ -1,0 +1,21 @@
+{{- if .Values.security.limitRange.enabled }}
+# Backstop for the "compliant deployment" claim: a team that forgets to set
+# requests/limits in an onboarded service doesn't get an unbounded pod —
+# they get these defaults instead.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}-limits
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
+spec:
+  limits:
+  - type: Container
+    defaultRequest:
+      cpu: {{ .Values.security.limitRange.defaultRequestCpu | quote }}
+      memory: {{ .Values.security.limitRange.defaultRequestMemory | quote }}
+    default:
+      cpu: {{ .Values.security.limitRange.defaultLimitCpu | quote }}
+      memory: {{ .Values.security.limitRange.defaultLimitMemory | quote }}
+{{- end }}
