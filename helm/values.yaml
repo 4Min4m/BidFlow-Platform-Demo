@@ -1,0 +1,135 @@
+# BidFlow — one chart, two languages, one platform.
+#
+# services.goBidder and services.rubyBidder are each rendered from the same
+# Deployment/Service/HPA templates via `range` — this is the "modular Helm
+# chart enabling compliant deployments" from the resume bullet: onboarding a
+# third (e.g. Python) service means adding one more entry here, not writing
+# new YAML.
+
+imageRegistry: "us-central1-docker.pkg.dev/project-135/bidflow"
+
+services:
+  goBidder:
+    enabled: true
+    port: 8080
+    publicEntrypoint: true      # this one gets the Ingress
+    replicas: 1
+    image:
+      repository: go-bidder
+      tag: "latest"
+    resources:
+      requests: { cpu: 100m, memory: 64Mi }
+      limits: { cpu: 500m, memory: 256Mi }
+    livenessProbe:
+      httpGet: { path: /live, port: 8080 }
+      initialDelaySeconds: 5
+      periodSeconds: 10
+    readinessProbe:
+      httpGet: { path: /ready, port: 8080 }
+      initialDelaySeconds: 5
+      periodSeconds: 5
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 50
+    securityContext:
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true   # static Go binary — no writes needed
+      allowPrivilegeEscalation: false
+      capabilities: { drop: ["ALL"] }
+      seccompProfile: { type: RuntimeDefault }
+
+  rubyBidder:
+    enabled: true
+    port: 4567
+    publicEntrypoint: false      # only reachable inside the cluster
+    replicas: 1
+    image:
+      repository: ruby-bidder
+      tag: "latest"
+    env:
+      RUBY_GC_HEAP_GROWTH_FACTOR: "1.1"   # from platform-teammate transcript
+      AB_VARIANT: "A"                      # A/B experiment (product teammate)
+      REDIS_TTL: "30"
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    livenessProbe:
+      httpGet: { path: /live, port: 4567 }
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    readinessProbe:
+      httpGet: { path: /ready, port: 4567 }
+      initialDelaySeconds: 5
+      periodSeconds: 5
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 50
+    securityContext:
+      runAsNonRoot: true
+      readOnlyRootFilesystem: false  # Puma/Bundler want a writable /tmp;
+      allowPrivilegeEscalation: false
+      capabilities: { drop: ["ALL"] }
+      seccompProfile: { type: RuntimeDefault }
+
+ingress:
+  enabled: true
+  staticIpName: ""
+
+# A/B experiment config (product teammate)
+ab:
+  variants:
+    A: { redisTtl: 30 }
+    B: { redisTtl: 120 }
+
+redis:
+  image: redis:7-alpine
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+  storage: 1Gi
+
+# Phase 2 — distributed tracing
+tracing:
+  enabled: true
+  otlpProtocol: "http/protobuf"
+  # otlpEndpoint is left empty and computed from the release name in
+  # _helpers.tpl so it always points at the jaeger service this same
+  # release deploys — see the "bidflow-app.otlpEndpoint" helper.
+
+jaeger:
+  enabled: true
+  image: jaegertracing/all-in-one:1.57
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+# Redis -> GCS backup CronJob
+backup:
+  enabled: true
+  schedule: "0 */6 * * *"
+  serviceAccountName: bidflow-backup          # KSA, bound to a GCP SA via Workload Identity
+  gcpServiceAccountEmail: "bidflow-backup@project-135.iam.gserviceaccount.com"
+  gcs:
+    bucket: "bidflow-backups-135"
+
+# Namespace-wide guardrails (compliance hardening)
+security:
+  networkPolicy:
+    enabled: true
+  resourceQuota:
+    enabled: true
+    pods: "20"
+    requestsCpu: "4"
+    requestsMemory: "8Gi"
+    limitsCpu: "8"
+    limitsMemory: "16Gi"
+  limitRange:
+    enabled: true
+    defaultRequestCpu: "100m"
+    defaultRequestMemory: "128Mi"
+    defaultLimitCpu: "500m"
+    defaultLimitMemory: "512Mi"
