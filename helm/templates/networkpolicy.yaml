@@ -1,0 +1,128 @@
+{{- if .Values.security.networkPolicy.enabled }}
+# Default-deny-ish baseline: only allow the traffic paths BidFlow needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}-default-deny
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+  # No ingress/egress rules here means default-deny; every allowed path is
+  # opened explicitly below.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}-allow-go-bidder-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bidflow-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: go-bidder
+  policyTypes: ["Ingress"]
+  ingress:
+  # GKE's GCE Ingress controller health-checks and proxies through the
+  # node network, not a pod, so this is intentionally open on the
+  # service port rather than scoped to a namespaceSelector.
+  - ports:
+    - port: {{ .Values.services.goBidder.port }}
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}-allow-ruby-bidder-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bidflow-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ruby-bidder
+  policyTypes: ["Ingress"]
+  ingress:
+  # ruby-bidder is only ever called by go-bidder within the cluster.
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "bidflow-app.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: go-bidder
+    ports:
+    - port: {{ .Values.services.rubyBidder.port }}
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}-allow-redis-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bidflow-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  policyTypes: ["Ingress"]
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "bidflow-app.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: ruby-bidder
+    - podSelector:
+        matchLabels:
+          {{- include "bidflow-app.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: redis-backup
+    ports:
+    - port: 6379
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}-allow-app-egress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app.kubernetes.io/component
+      operator: In
+      values: ["go-bidder", "ruby-bidder", "redis-backup"]
+  policyTypes: ["Egress"]
+  egress:
+  # DNS
+  - to: []
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+  # go-bidder -> ruby-bidder, ruby-bidder -> redis, both -> jaeger OTLP
+  - to:
+    - podSelector:
+        matchLabels:
+          {{- include "bidflow-app.selectorLabels" . | nindent 10 }}
+    ports:
+    - port: {{ .Values.services.rubyBidder.port }}
+      protocol: TCP
+    - port: 6379
+      protocol: TCP
+    - port: 4318
+      protocol: TCP
+  # gsutil (backup CronJob) and google-github-actions style egress to the
+  # internet for GCS — restrict to 443/HTTPS rather than allow-all.
+  - to: []
+    ports:
+    - port: 443
+      protocol: TCP
+{{- end }}
