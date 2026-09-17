@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BidFlow — Self-service polyglot bidding platform on GKE Autopilot</title>
+<meta name="description" content="A modular Helm chart deploys a Go + Ruby polyglot platform on GKE Autopilot with one connected OpenTelemetry trace across both languages.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0b141c;
+    --panel: #101b25;
+    --panel-2: #14212c;
+    --line: #223244;
+    --line-bright: #3e6e8e;
+    --text: #dce6ec;
+    --muted: #8ca0b3;
+    --accent: #6ee7c8;
+    --accent-dim: rgba(110, 231, 200, 0.14);
+    --radius: 3px;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  code, .mono { font-family: var(--mono); }
+
+  /* ---------- Spine layout: every section is a "span" on a trace ---------- */
+
+  .spine {
+    position: relative;
+  }
+
+  .spine::before {
+    content: "";
+    position: absolute;
+    left: 22px;
+    top: 6px;
+    bottom: 6px;
+    width: 1px;
+    background: var(--line);
+  }
+
+  .spine .spine-draw {
+    position: absolute;
+    left: 22px;
+    top: 6px;
+    width: 1px;
+    height: 0%;
+    background: var(--accent);
+    animation: draw-spine 1.4s 0.2s ease-out forwards;
+  }
+
+  @keyframes draw-spine {
+    to { height: 100%; }
+  }
+
+  /* Ticks are children of each header/section, which (as normal-flow
+     children of .wrap) share the same x-origin as the spine line above —
+     offsetting by half the tick's own width centers it on that line. */
+  .tick {
+    position: absolute;
+    left: -6px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--line-bright);
+    top: 6px;
+  }
+
+  header.hero, section.span { position: relative; padding-left: 40px; }
+  header.hero { padding-top: 84px; padding-bottom: 56px; }
+  section.span { padding-top: 56px; }
+
+  .span-label {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--muted);
+    letter-spacing: 0.01em;
+    margin-bottom: 10px;
+  }
+
+  h1, h2, h3 { font-family: var(--mono); font-weight: 500; margin: 0; }
+
+  /* ---------- Hero ---------- */
+
+  header.hero h1 {
+    font-size: clamp(2.2rem, 5vw, 3.1rem);
+    line-height: 1.1;
+    color: var(--text);
+  }
+
+  header.hero .tagline {
+    margin-top: 18px;
+    max-width: 46ch;
+    font-size: 1.1rem;
+    color: var(--muted);
+  }
+
+  .cta-row {
+    margin-top: 30px;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    padding: 11px 18px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-bright);
+    color: var(--text);
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .btn:hover { border-color: var(--accent); background: var(--accent-dim); text-decoration: none; }
+
+  .btn.primary {
+    background: var(--accent);
+    color: #06231d;
+    border-color: var(--accent);
+  }
+  .btn.primary:hover { background: #85f0d5; }
+
+  /* ---------- Trace waterfall (hero visual) ---------- */
+
+  .waterfall {
+    margin-top: 52px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px 22px 18px;
+  }
+
+  .waterfall .wf-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 12px;
+  }
+
+  .wf-row { display: grid; grid-template-columns: 160px 1fr; align-items: center; gap: 12px; margin: 11px 0; }
+  .wf-name { font-family: var(--mono); font-size: 0.78rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wf-name .svc { color: var(--muted); display: block; font-size: 0.68rem; margin-top: 2px; }
+  .wf-track { position: relative; height: 16px; background: transparent; }
+  .wf-bar {
+    position: absolute;
+    top: 2px;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--line-bright);
+  }
+  .wf-bar.hot { background: var(--accent); }
+  .wf-bar span {
+    position: absolute;
+    left: calc(100% + 8px);
+    top: -3px;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .wf-caption { margin-top: 16px; font-size: 0.85rem; color: var(--muted); }
+
+  /* ---------- Overview / body copy ---------- */
+
+  p { max-width: 68ch; }
+  .lede { font-size: 1.05rem; }
+
+  /* ---------- Architecture diagram ---------- */
+
+  .diagram {
+    margin-top: 26px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    overflow-x: auto;
+  }
+  .diagram svg { display: block; min-width: 620px; width: 100%; height: auto; }
+
+  .diagram-note { margin-top: 14px; font-size: 0.9rem; color: var(--muted); }
+
+  /* ---------- Proof grid / placeholders ---------- */
+
+  .proof-intro { color: var(--muted); }
+
+  .proof-grid {
+    margin-top: 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+  }
+
+  .placeholder {
+    border: 1px dashed var(--line-bright);
+    border-radius: var(--radius);
+    background: var(--panel);
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 14px;
+    color: var(--muted);
+  }
+
+  .placeholder .ph-icon {
+    color: var(--line-bright);
+    margin-bottom: auto;
+  }
+
+  .placeholder .ph-title { font-family: var(--mono); font-size: 0.82rem; color: var(--text); margin-bottom: 4px; }
+  .placeholder .ph-hint { font-size: 0.78rem; }
+
+  .placeholder.video { grid-column: 1 / -1; min-height: 220px; }
+
+  /* ---------- Demonstrates list ---------- */
+
+  .demo-list { margin-top: 22px; border-top: 1px solid var(--line); }
+  .demo-row {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 18px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .demo-row .claim { font-size: 0.95rem; color: var(--text); }
+  .demo-row .impl { font-family: var(--mono); font-size: 0.82rem; color: var(--muted); }
+
+  @media (max-width: 620px) {
+    .demo-row { grid-template-columns: 1fr; gap: 4px; }
+  }
+
+  /* ---------- Tech strip ---------- */
+
+  .tags { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag {
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    padding: 5px 10px;
+    border-radius: var(--radius);
+  }
+
+  /* ---------- Footer ---------- */
+
+  footer {
+    margin-top: 90px;
+    padding: 34px 0 60px;
+    border-top: 1px solid var(--line);
+  }
+  footer .foot-links { display: flex; gap: 22px; flex-wrap: wrap; font-family: var(--mono); font-size: 0.85rem; }
+  footer .foot-note { margin-top: 18px; color: var(--muted); font-size: 0.82rem; }
+
+  ::selection { background: var(--accent-dim); color: var(--text); }
+</style>
+</head>
+<body>
+
+<div class="wrap spine">
+  <div class="spine-draw"></div>
+
+  <header class="hero span">
+    <div class="tick"></div>
+    <h1>BidFlow</h1>
+    <p class="tagline">A self-service developer platform on GKE Autopilot. One modular Helm chart deploys a Go and a Ruby service together — and one request through both of them produces a single connected trace.</p>
+    <div class="cta-row">
+      <a class="btn primary" href="https://github.com/REPLACE-ME/bidflow" target="_blank" rel="noopener">View source →</a>
+      <a class="btn" href="https://github.com/REPLACE-ME/bidflow/blob/main/DEVOPS_STUDY_GUIDE.md" target="_blank" rel="noopener">Read the build log</a>
+    </div>
+
+    <div class="waterfall" role="img" aria-label="Illustrative trace waterfall showing a request passing from go-bidder to ruby-bidder to Redis">
+      <div class="wf-head">
+        <span>trace 4e1a…c02f</span>
+        <span>0 – 42ms</span>
+      </div>
+
+      <div class="wf-row">
+        <div class="wf-name">POST /bid<span class="svc">go-bidder</span></div>
+        <div class="wf-track">
+          <div class="wf-bar" style="left:0%; width:96%;"></div>
+        </div>
+      </div>
+      <div class="wf-row">
+        <div class="wf-name">forward_bid_to_ruby<span class="svc">go-bidder</span></div>
+        <div class="wf-track">
+          <div class="wf-bar" style="left:10%; width:78%;"></div>
+        </div>
+      </div>
+      <div class="wf-row">
+        <div class="wf-name">POST /bid<span class="svc">ruby-bidder</span></div>
+        <div class="wf-track">
+          <div class="wf-bar hot" style="left:22%; width:58%;"></div>
+        </div>
+      </div>
+      <div class="wf-row">
+        <div class="wf-name">SET bid:id<span class="svc">redis</span></div>
+        <div class="wf-track">
+          <div class="wf-bar" style="left:52%; width:14%;"></div>
+        </div>
+      </div>
+
+      <p class="wf-caption">Illustrative — the real thing is one screenshot away, see “Proof it runs” below.</p>
+    </div>
+  </header>
+
+  <section class="span">
+    <div class="tick"></div>
+    <div class="span-label">overview</div>
+    <h2 style="font-size:1.4rem; margin-bottom:14px;">One chart, two languages, one trace</h2>
+    <p class="lede">BidFlow deploys a polyglot pair of bidding services from a single Helm chart: a Go service validates and forwards each bid, a Ruby service owns the write to Redis. Because one request genuinely crosses that language boundary, OpenTelemetry can trace it end to end — not two services that happen to sit near each other, but one connected call.</p>
+    <p>Terraform provisions GKE Autopilot, Artifact Registry, and a GCS backup bucket. GitHub Actions builds, immutably tags, and deploys both services with no downloaded credential anywhere in the pipeline — GCP trusts GitHub's own signed tokens instead.</p>
+  </section>
+
+  <section class="span">
+    <div class="tick"></div>
+    <div class="span-label">architecture</div>
+    <h2 style="font-size:1.4rem; margin-bottom:14px;">How a bid moves through the platform</h2>
+
+    <div class="diagram">
+      <svg viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Architecture diagram: Internet through Ingress to go-bidder, which calls ruby-bidder, which writes to Redis; both services export traces to Jaeger; Redis is backed up to Cloud Storage; GitHub Actions deploys via Workload Identity Federation.">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#3e6e8e"/>
+          </marker>
+        </defs>
+        <style>
+          .box { fill:#14212c; stroke:#223244; stroke-width:1; }
+          .box.entry { stroke:#6ee7c8; }
+          .lbl { font-family:'IBM Plex Mono',monospace; font-size:12px; fill:#dce6ec; }
+          .lbl.sub { fill:#8ca0b3; font-size:10px; }
+          .edge { stroke:#3e6e8e; stroke-width:1; fill:none; marker-end:url(#arrow); }
+          .clusterbox { fill:none; stroke:#223244; stroke-dasharray:3 3; }
+        </style>
+
+        <rect class="clusterbox" x="200" y="20" width="560" height="260" rx="3"/>
+        <text x="212" y="38" class="lbl sub">GKE Autopilot</text>
+
+        <rect class="box" x="20" y="120" width="110" height="46" rx="3"/>
+        <text x="42" y="148" class="lbl">Internet</text>
+
+        <rect class="box entry" x="230" y="120" width="120" height="46" rx="3"/>
+        <text x="248" y="140" class="lbl">go-bidder</text>
+        <text x="248" y="154" class="lbl sub">:8080</text>
+
+        <rect class="box" x="440" y="120" width="130" height="46" rx="3"/>
+        <text x="456" y="140" class="lbl">ruby-bidder</text>
+        <text x="456" y="154" class="lbl sub">:4567</text>
+
+        <rect class="box" x="440" y="210" width="130" height="46" rx="3"/>
+        <text x="465" y="230" class="lbl">Redis</text>
+        <text x="465" y="244" class="lbl sub">StatefulSet</text>
+
+        <rect class="box" x="640" y="40" width="110" height="46" rx="3"/>
+        <text x="655" y="60" class="lbl">Jaeger</text>
+        <text x="655" y="74" class="lbl sub">:16686 UI</text>
+
+        <rect class="box" x="640" y="210" width="110" height="46" rx="3"/>
+        <text x="650" y="230" class="lbl">CronJob</text>
+        <text x="650" y="244" class="lbl sub">6h backup</text>
+
+        <rect class="box" x="20" y="220" width="130" height="46" rx="3"/>
+        <text x="35" y="240" class="lbl">GitHub Actions</text>
+        <text x="35" y="254" class="lbl sub">push-based CI/CD</text>
+
+        <rect class="box" x="780" y="220" width="60" height="46" rx="3"/>
+        <text x="792" y="248" class="lbl sub">GCS</text>
+
+        <path class="edge" d="M130,143 H230"/>
+        <path class="edge" d="M350,143 H440"/>
+        <path class="edge" d="M505,166 V210"/>
+        <path class="edge" d="M290,120 V86 H700 V86" />
+        <path class="edge" d="M505,120 V95 Q505,86 640,86" />
+        <path class="edge" d="M570,233 H640"/>
+        <path class="edge" d="M750,233 H780"/>
+        <path class="edge" d="M85,220 V166" />
+      </svg>
+    </div>
+    <p class="diagram-note">Dotted boundary is the cluster. Both services export spans to Jaeger over OTLP; Redis is snapshotted to Cloud Storage every six hours via GKE Workload Identity — no static key anywhere in that path.</p>
+  </section>
+
+  <section class="span">
+    <div class="tick"></div>
+    <div class="span-label">proof it runs</div>
+    <h2 style="font-size:1.4rem; margin-bottom:10px;">Not just a diagram</h2>
+    <p class="proof-intro">Screenshots and a short walkthrough from an actual deploy, captured on my own GCP project.</p>
+
+    <div class="proof-grid">
+      <div class="placeholder">
+        <div class="ph-icon">◔</div>
+        <div class="ph-title">Cross-language trace</div>
+        <div class="ph-hint">Screenshot — Jaeger UI, one trace ID showing both go-bidder and ruby-bidder spans</div>
+      </div>
+      <div class="placeholder">
+        <div class="ph-icon">◔</div>
+        <div class="ph-title">HPA scaling under load</div>
+        <div class="ph-hint">Screenshot or GIF — `kubectl get hpa -w` with replica count climbing</div>
+      </div>
+      <div class="placeholder">
+        <div class="ph-icon">◔</div>
+        <div class="ph-title">CI/CD pipeline run</div>
+        <div class="ph-hint">Screenshot — GitHub Actions run: build → push → helm upgrade, all green</div>
+      </div>
+      <div class="placeholder video">
+        <div class="ph-icon">▷</div>
+        <div class="ph-title">60-second walkthrough</div>
+        <div class="ph-hint">Video — a bid going in through curl and the matching trace appearing in Jaeger</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="span">
+    <div class="tick"></div>
+    <div class="span-label">what this demonstrates</div>
+    <h2 style="font-size:1.4rem;">From resume line to running code</h2>
+
+    <div class="demo-list">
+      <div class="demo-row">
+        <div class="claim">Modular Helm charts, Ruby/Go polyglot</div>
+        <div class="impl">one Deployment template, ranged over values.services</div>
+      </div>
+      <div class="demo-row">
+        <div class="claim">Compliant deployments</div>
+        <div class="impl">non-root, dropped capabilities, default-deny NetworkPolicy, ResourceQuota</div>
+      </div>
+      <div class="demo-row">
+        <div class="claim">End-to-end GitOps, immutable tagging</div>
+        <div class="impl">GitHub Actions, SHA-tagged images, push-based deploy</div>
+      </div>
+      <div class="demo-row">
+        <div class="claim">Prometheus + HPA autoscaling</div>
+        <div class="impl">per-service HPA on CPU, /metrics on both services</div>
+      </div>
+      <div class="demo-row">
+        <div class="claim">Keyless cloud auth</div>
+        <div class="impl">Workload Identity Federation (CI) + Workload Identity (backups)</div>
+      </div>
+      <div class="demo-row">
+        <div class="claim">Distributed tracing</div>
+        <div class="impl">OpenTelemetry (Go + Ruby) → OTLP → Jaeger</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="span">
+    <div class="tick"></div>
+    <div class="span-label">stack</div>
+    <div class="tags">
+      <span class="tag">GKE Autopilot</span>
+      <span class="tag">Terraform</span>
+      <span class="tag">Helm</span>
+      <span class="tag">Go</span>
+      <span class="tag">Ruby / Sinatra</span>
+      <span class="tag">Redis</span>
+      <span class="tag">GitHub Actions</span>
+      <span class="tag">OpenTelemetry</span>
+      <span class="tag">Jaeger</span>
+      <span class="tag">Prometheus</span>
+      <span class="tag">Workload Identity Federation</span>
+    </div>
+  </section>
+
+  <footer>
+    <div class="foot-links">
+      <a href="https://github.com/REPLACE-ME/bidflow" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://linkedin.com/in/REPLACE-ME" target="_blank" rel="noopener">LinkedIn</a>
+      <a href="mailto:REPLACE-ME@example.com">Email</a>
+    </div>
+    <p class="foot-note">Built by Amin Amini — DevOps &amp; Platform Engineer.</p>
+  </footer>
+
+</div>
+
+</body>
+</html>
