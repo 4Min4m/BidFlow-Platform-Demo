@@ -1,0 +1,28 @@
+{{- range $key, $svc := .Values.services }}
+{{- if and $svc.enabled $svc.hpa.enabled }}
+{{- $fullname := include "bidflow-app.serviceFullname" (dict "root" $ "key" $key) }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "bidflow-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $key | kebabcase }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $fullname }}
+  minReplicas: {{ $svc.hpa.minReplicas }}
+  maxReplicas: {{ $svc.hpa.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ $svc.hpa.targetCPUUtilizationPercentage }}
+---
+{{- end }}
+{{- end }}
