@@ -1,0 +1,104 @@
+name: CI/CD Pipeline for BidFlow (polyglot, push-based GitOps)
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  GKE_CLUSTER: bidflow-autopilot
+  GKE_REGION: ${{ vars.GKE_REGION }}
+  ARTIFACT_REGISTRY: ${{ vars.ARTIFACT_REGISTRY }}
+
+permissions:
+  contents: read
+  id-token: write   # required for keyless Workload Identity Federation
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [go-bidder, ruby-bidder]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Authenticate to GCP (Workload Identity Federation, no key file)
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+        service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+    - name: Setup gcloud
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker for Artifact Registry
+      run: gcloud auth configure-docker "${GKE_REGION}-docker.pkg.dev" --quiet
+
+    - name: Build image
+      run: |
+        cd app/${{ matrix.service }}
+        docker build -t "${ARTIFACT_REGISTRY}/${{ matrix.service }}:${{ github.sha }}" .
+
+    - name: Smoke test (health check)
+      run: |
+        PORT=4567
+        if [ "${{ matrix.service }}" = "go-bidder" ]; then PORT=8080; fi
+        docker run -d -p "${PORT}:${PORT}" --name test-${{ matrix.service }} \
+          "${ARTIFACT_REGISTRY}/${{ matrix.service }}:${{ github.sha }}"
+        sleep 5
+        curl -f "http://localhost:${PORT}/health" || { echo "Health check failed"; docker logs test-${{ matrix.service }}; docker rm -f test-${{ matrix.service }}; exit 1; }
+        docker rm -f test-${{ matrix.service }}
+
+    - name: Push image (immutable SHA tag)
+      if: github.ref == 'refs/heads/main'
+      run: docker push "${ARTIFACT_REGISTRY}/${{ matrix.service }}:${{ github.sha }}"
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Authenticate to GCP (Workload Identity Federation, no key file)
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+        service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+    - name: Setup gcloud
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Get GKE credentials
+      run: gcloud container clusters get-credentials "${GKE_CLUSTER}" --region "${GKE_REGION}"
+
+    - name: Install GKE auth plugin
+      run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+    - name: Setup Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: v3.15.0
+
+    - name: Create namespace if needed
+      run: kubectl create namespace bidflow --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Deploy with Helm (push-based GitOps)
+      run: |
+        helm upgrade --install bidflow-app helm/ \
+          --values helm/values.yaml \
+          --set imageRegistry="${ARTIFACT_REGISTRY}" \
+          --set services.goBidder.image.tag="${{ github.sha }}" \
+          --set services.rubyBidder.image.tag="${{ github.sha }}" \
+          --namespace bidflow \
+          --create-namespace \
+          --wait --timeout 5m
+
+    - name: Verify deployment
+      run: |
+        kubectl rollout status deployment/bidflow-app-go-bidder -n bidflow --timeout=300s
+        kubectl rollout status deployment/bidflow-app-ruby-bidder -n bidflow --timeout=300s
+        kubectl get pods -n bidflow
