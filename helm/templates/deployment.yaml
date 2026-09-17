@@ -1,0 +1,105 @@
+{{- range $key, $svc := .Values.services }}
+{{- if $svc.enabled }}
+{{- $fullname := include "bidflow-app.serviceFullname" (dict "root" $ "key" $key) }}
+{{- $selectorLabels := include "bidflow-app.serviceSelectorLabels" (dict "root" $ "key" $key) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "bidflow-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $key | kebabcase }}
+spec:
+  replicas: {{ $svc.replicas }}
+  selector:
+    matchLabels:
+      {{- $selectorLabels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- $selectorLabels | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ $svc.port }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+      - name: {{ $key | kebabcase }}
+        image: {{ include "bidflow-app.image" (dict "registry" $.Values.imageRegistry "svc" $svc) }}
+        ports:
+        - containerPort: {{ $svc.port }}
+        resources:
+          {{- toYaml $svc.resources | nindent 10 }}
+        securityContext:
+          {{- toYaml $svc.securityContext | nindent 10 }}
+        env:
+        {{- if eq $key "rubyBidder" }}
+        - name: REDIS_HOST
+          value: "{{ include "bidflow-app.fullname" $ }}-redis"
+        - name: REDIS_PORT
+          value: "6379"
+        {{- range $envKey, $envVal := $svc.env }}
+        - name: {{ $envKey }}
+          value: {{ $envVal | quote }}
+        {{- end }}
+        {{- else if eq $key "goBidder" }}
+        - name: RUBY_SERVICE_URL
+          value: "http://{{ include "bidflow-app.serviceFullname" (dict "root" $ "key" "rubyBidder") }}:{{ $.Values.services.rubyBidder.port }}"
+        {{- end }}
+        - name: OTEL_SERVICE_NAME
+          value: "bidflow-{{ $key | kebabcase }}"
+        {{- if $.Values.tracing.enabled }}
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: {{ include "bidflow-app.otlpEndpoint" $ | quote }}
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: {{ $.Values.tracing.otlpProtocol | quote }}
+        {{- end }}
+        {{- with $svc.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with $svc.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- if eq $key "rubyBidder" }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        {{- end }}
+      {{- if eq $key "rubyBidder" }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "bidflow-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $key | kebabcase }}
+  {{- if $svc.publicEntrypoint }}
+  annotations:
+    cloud.google.com/backend-config: '{"ports": {"{{ $svc.port }}":"{{ $fullname }}-backend-config"}}'
+    cloud.google.com/neg: '{"ingress": true}'
+  {{- end }}
+spec:
+  type: {{ if $svc.publicEntrypoint }}NodePort{{ else }}ClusterIP{{ end }}
+  ports:
+  - port: {{ $svc.port }}
+    targetPort: {{ $svc.port }}
+    protocol: TCP
+    name: http
+  selector:
+    {{- $selectorLabels | nindent 4 }}
+---
+{{- end }}
+{{- end }}
