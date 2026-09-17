@@ -51,12 +51,12 @@ cross a language boundary, and Jaeger shows it.
 
 ## What this demonstrates
 
-| Where it lives |
+| Feature | Where it lives |
 |---|---|
 | Self-service IDP on GKE Autopilot | `terraform/main.tf` (cluster + APIs), one Helm chart for both services |
 | Modular Helm charts (Ruby/Go polyglot) | `helm/templates/deployment.yaml` — a single `range` over `values.services` renders both languages; onboarding a third service is a values.yaml entry, not new YAML |
 | Compliant deployments under 3 minutes | `helm/templates/{networkpolicy,resourcequota,limitrange}.yaml` bake in non-root containers, dropped capabilities, default-deny NetworkPolicy, and resource guardrails so a team can't accidentally deploy something non-compliant |
-| End-to-end GitOps, immutable image tagging | `.github/workflows/deploy.yaml` — build -> SHA-tag -> push -> `helm upgrade`, push-based (Project 1's EKS/HTTPBin platform demonstrates the pull-based/Argo CD alternative) |
+| End-to-end GitOps, immutable image tagging | `.github/workflows/deploy.yaml` — build → SHA-tag → push → `helm upgrade`, push-based (Project 1's EKS/HTTPBin platform demonstrates the pull-based/Argo CD alternative) |
 | Terraform | `terraform/main.tf` — GKE Autopilot, Artifact Registry, GCS backup bucket, Workload Identity Federation for keyless CI auth, Workload Identity for the backup CronJob |
 | Prometheus + HPA | `/metrics` on both services (Prometheus-scrape annotated), `helm/templates/hpa.yaml`, one per service |
 | Polyglot distributed tracing (OpenTelemetry + Jaeger) | `app/go-bidder` + `app/ruby-bidder` both instrumented; `helm/templates/jaeger.yaml` |
