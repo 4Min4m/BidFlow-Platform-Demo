@@ -75,6 +75,29 @@ transcripts/     Simulated cross-functional review notes that shaped the
                  design decisions below (dev/platform/product "teammates")
 ```
 
+## Run it locally (no GCP needed)
+
+The same images the chart deploys, plus Redis and Jaeger, on a plain
+Docker network. This is how the screenshots and walkthrough video in
+`assets/` were captured.
+
+```bash
+docker build -t bidflow/go-bidder app/go-bidder
+docker build -t bidflow/ruby-bidder app/ruby-bidder
+docker network create bidflow
+docker run -d --name jaeger --network bidflow -p 16686:16686 jaegertracing/all-in-one:1.57
+docker run -d --name redis  --network bidflow redis:7-alpine
+docker run -d --name ruby-bidder --network bidflow -e REDIS_HOST=redis \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 bidflow/ruby-bidder
+docker run -d --name go-bidder --network bidflow -p 8080:8080 \
+  -e RUBY_SERVICE_URL=http://ruby-bidder:4567 \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 bidflow/go-bidder
+curl -X POST localhost:8080/bid -H 'Content-Type: application/json' -d '{"id":"abc","amount":42.5}'
+```
+
+Then open `localhost:16686`, pick service `bidflow-go-bidder`, and open the
+trace: five spans across both languages, ending in the Redis `SET`.
+
 ## Deploying from GitHub Codespaces
 
 Everything below assumes a Codespace with no local installs — `gcloud`,

@@ -21,7 +21,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"runtime/debug"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,6 +31,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
@@ -109,7 +109,14 @@ func setupTracing(ctx context.Context) (func(context.Context) error, error) {
 		sdktrace.WithResource(res),
 	)
 	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(otel.GetTextMapPropagator())
+	// The global default propagator is a no-op: without registering W3C
+	// TraceContext explicitly, no `traceparent` header is injected into the
+	// outbound call and ruby-bidder would start a brand-new, disconnected
+	// trace instead of continuing this one.
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
 
 	return tp.Shutdown, nil
 }
@@ -226,7 +233,6 @@ func readyHandler(rubyURL string, httpClient *http.Client) http.HandlerFunc {
 
 func main() {
 	log.Printf("starting %s — GOGC=%s GODEBUG=%s", serviceName, os.Getenv("GOGC"), os.Getenv("GODEBUG"))
-	debug.SetGCPercent(-1) // no-op placeholder; GOGC env var is honored by the runtime directly
 
 	ctx := context.Background()
 	shutdown, err := setupTracing(ctx)

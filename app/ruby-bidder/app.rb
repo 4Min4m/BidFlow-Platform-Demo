@@ -62,9 +62,16 @@ post '/bid' do
     current_span.set_attribute('bid.amount', amount.to_f) if amount
     current_span.set_attribute('bid.forwarded_by', forwarded_by) if forwarded_by
 
-    # Validate: Amount > 0
-    raise "Invalid bid amount" if amount.nil? || amount <= 0
-    raise "Missing bid ID" if bid_id.nil?
+    # Validate before touching anything else. Checked as Numeric so a
+    # string amount ("42") is a clean 400, not a NoMethodError -> 500.
+    if bid_id.nil? || bid_id.to_s.empty?
+      $bid_errors += 1
+      halt 400, { error: 'Missing bid ID' }.to_json
+    end
+    unless amount.is_a?(Numeric) && amount.positive?
+      $bid_errors += 1
+      halt 400, { error: 'Invalid bid amount' }.to_json
+    end
 
     # A/B Experiment: Variant-based Redis TTL
     redis_ttl = case ENV['AB_VARIANT']
@@ -77,9 +84,18 @@ post '/bid' do
 
     # Store in Redis (if available) with TTL — instrumented automatically,
     # this shows up as a child span of the current request span.
+    # Redis.new connects lazily, so an outage surfaces here, not in
+    # get_redis — rescue it so the bid path degrades instead of 500ing.
+    stored = false
     redis = get_redis
     if redis
-      redis.set("bid:#{bid_id}", amount.to_s, ex: redis_ttl)
+      begin
+        redis.set("bid:#{bid_id}", amount.to_s, ex: redis_ttl)
+        stored = true
+      rescue Redis::BaseError => e
+        current_span.record_exception(e)
+        puts({ event: 'redis_unavailable', error: e.message }.to_json)
+      end
     end
 
     # Increment success counter
@@ -92,14 +108,15 @@ post '/bid' do
       id: bid_id,
       amount: amount,
       ab_variant: ENV['AB_VARIANT'] || 'A',
+      stored: stored,
       forwarded_by: forwarded_by,
       trace_id: current_span.context.hex_trace_id,
       timestamp: Time.now.utc.iso8601
     }.to_json
     puts log_event
 
-    status 201
-    { status: 'Bid stored' }.to_json
+    status stored ? 201 : 202
+    { status: stored ? 'Bid stored' : 'Bid accepted (cache unavailable)' }.to_json
   rescue JSON::ParserError => e
     $bid_errors += 1
     status 400

@@ -107,10 +107,15 @@ resource "google_storage_bucket_iam_member" "backup_writer" {
 
 resource "google_service_account_iam_member" "backup_workload_identity" {
   service_account_id = google_service_account.backup.name
-  role                = "roles/iam.workloadIdentityUser"
+  role               = "roles/iam.workloadIdentityUser"
   # Binds the KSA "bidflow-backup" in the "bidflow" namespace specifically —
   # any other KSA in the project cannot impersonate this GSA.
   member = "serviceAccount:${var.project_id}.svc.id.goog[bidflow/bidflow-backup]"
+
+  # The <project>.svc.id.goog identity pool only exists once a GKE cluster
+  # with Workload Identity does — without this, a first `apply` can race
+  # ahead of the cluster and fail with "Identity Pool does not exist".
+  depends_on = [google_container_cluster.bidflow_cluster]
 }
 
 # ---------------------------------------------------------------------------
@@ -125,7 +130,7 @@ resource "google_iam_workload_identity_pool" "github" {
 }
 
 resource "google_iam_workload_identity_pool_provider" "github" {
-  workload_identity_pool_id         = google_iam_workload_identity_pool.github.workload_identity_pool_id
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
   workload_identity_pool_provider_id = "github-provider"
   display_name                       = "GitHub OIDC"
 
@@ -150,8 +155,8 @@ resource "google_service_account" "github_actions" {
 
 resource "google_service_account_iam_member" "github_actions_wif_binding" {
   service_account_id = google_service_account.github_actions.name
-  role                = "roles/iam.workloadIdentityUser"
-  member              = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repository}"
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repository}"
 }
 
 resource "google_project_iam_member" "github_actions_artifact_writer" {

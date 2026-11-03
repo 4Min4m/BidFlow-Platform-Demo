@@ -8,8 +8,10 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
   jobTemplate:
     spec:
+      backoffLimit: 2
       template:
         metadata:
           labels:
@@ -21,37 +23,63 @@ spec:
           # no downloaded JSON key ever touches the cluster.
           serviceAccountName: {{ .Values.backup.serviceAccountName }}
           automountServiceAccountToken: true
+          restartPolicy: OnFailure
           securityContext:
             runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            fsGroup: 999
             seccompProfile: { type: RuntimeDefault }
-          containers:
-          - name: backup
-            image: google/cloud-sdk:alpine
-            command: ["/bin/sh", "-c"]
+          # Step 1: pull a consistent RDB snapshot over the network with
+          # `redis-cli --rdb`. This avoids mounting Redis's ReadWriteOnce PVC
+          # a second time, which fails as soon as the Job lands on a
+          # different node than redis-0.
+          initContainers:
+          - name: snapshot
+            image: {{ .Values.redis.image }}
+            command: ["sh", "-c"]
             args:
-            - |
-              set -e
-              echo "Triggering Redis BGSAVE via redis-cli..."
-              redis-cli -h "$REDIS_HOST" BGSAVE
-              sleep 10  # give the background save time to finish writing dump.rdb
-              gsutil cp /data/dump.rdb "gs://$GCS_BUCKET/$(date +%Y%m%d-%H%M%S).rdb"
-              echo "Backup complete to GCS"
+            - redis-cli -h "$REDIS_HOST" --rdb /backup/dump.rdb
             env:
             - name: REDIS_HOST
               value: "{{ include "bidflow-app.fullname" . }}-redis"
-            - name: GCS_BUCKET
-              value: {{ .Values.backup.gcs.bucket | quote }}
             securityContext:
-              runAsNonRoot: true
               allowPrivilegeEscalation: false
               capabilities: { drop: ["ALL"] }
             volumeMounts:
-            - name: redis-data
-              mountPath: /data
+            - name: backup
+              mountPath: /backup
+          # Step 2: upload it to GCS as the Workload Identity-bound GSA.
+          containers:
+          - name: upload
+            image: {{ .Values.backup.image }}
+            command: ["sh", "-c"]
+            args:
+            - |
+              set -e
+              gcloud storage cp /backup/dump.rdb "gs://$GCS_BUCKET/$(date +%Y%m%d-%H%M%S).rdb"
+              echo "Backup complete to gs://$GCS_BUCKET"
+            env:
+            - name: GCS_BUCKET
+              value: {{ .Values.backup.gcs.bucket | quote }}
+            # gcloud writes config/credential caches under $HOME; the image's
+            # HOME is root-owned, so point it at the writable emptyDir.
+            - name: HOME
+              value: /tmp
+            - name: CLOUDSDK_CONFIG
+              value: /tmp/gcloud
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+            volumeMounts:
+            - name: backup
+              mountPath: /backup
               readOnly: true
-          restartPolicy: OnFailure
+            - name: tmp
+              mountPath: /tmp
           volumes:
-          - name: redis-data
-            persistentVolumeClaim:
-              claimName: redis-data-{{ include "bidflow-app.fullname" . }}-redis-0
+          - name: backup
+            emptyDir: {}
+          - name: tmp
+            emptyDir: {}
 {{- end }}

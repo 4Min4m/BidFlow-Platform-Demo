@@ -12,6 +12,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/go-bidder .
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 COPY --from=builder /out/go-bidder .
-USER nonroot:nonroot
+# Numeric UID so kubelet can verify runAsNonRoot (a named user fails that check)
+USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/app/go-bidder"]

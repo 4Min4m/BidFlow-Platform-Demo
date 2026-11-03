@@ -111,6 +111,7 @@ jaeger:
 backup:
   enabled: true
   schedule: "0 */6 * * *"
+  image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
   serviceAccountName: bidflow-backup          # KSA, bound to a GCP SA via Workload Identity
   gcpServiceAccountEmail: "bidflow-backup@project-135.iam.gserviceaccount.com"
   gcs:

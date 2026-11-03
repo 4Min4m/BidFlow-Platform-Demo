@@ -7,20 +7,27 @@ def load_logs(file_path):
     logs = []
     try:
         with open(file_path, 'r') as f:
-            for line in f:
-                log = json.loads(line.strip())
-                logs.append(log)
+            for lineno, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    log = json.loads(line)
+                except json.JSONDecodeError as e:
+                    # Graceful: skip non-JSON lines (e.g. Puma boot output)
+                    # instead of abandoning the rest of the file.
+                    print(f"Skipping line {lineno}: invalid JSON - {e}", file=sys.stderr)
+                    continue
+                if isinstance(log, dict):
+                    logs.append(log)
     except FileNotFoundError:
         print("Error: Log file not found.", file=sys.stderr)
         sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON - {e}", file=sys.stderr)
-        # Graceful: Skip invalid lines
     return logs
 
 def validate_bid(log):
     """Validate bid data."""
-    if 'amount' not in log or log['amount'] <= 0:
+    if not isinstance(log.get('amount'), (int, float)) or log['amount'] <= 0:
         raise ValueError("Invalid bid amount")
     if 'id' not in log:
         raise ValueError("Missing bid ID")
@@ -33,6 +40,8 @@ def detect_anomalies(logs):
         return []
     avg = mean(amounts)
     std = stdev(amounts)
+    if std == 0:
+        return []  # every bid identical: nothing can be an outlier
     anomalies = [log for log in logs if 'amount' in log and abs((log['amount'] - avg) / std) > 2]
     return anomalies
 

@@ -85,6 +85,38 @@ spec:
     - port: 6379
       protocol: TCP
 ---
+{{- if .Values.jaeger.enabled }}
+# Without this, the default-deny above silently drops every OTLP export and
+# Jaeger shows no traces at all.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bidflow-app.fullname" . }}-allow-jaeger-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bidflow-app.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bidflow-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: jaeger
+  policyTypes: ["Ingress"]
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/component
+          operator: In
+          values: ["go-bidder", "ruby-bidder"]
+    ports:
+    - port: 4318
+      protocol: TCP
+  # Jaeger UI, reached via `kubectl port-forward` only (no Service exposure).
+  - ports:
+    - port: 16686
+      protocol: TCP
+---
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -124,5 +156,15 @@ spec:
   - to: []
     ports:
     - port: 443
+      protocol: TCP
+  # GKE metadata server — Workload Identity token exchange for the backup
+  # CronJob (169.254.169.254:80, plus :988 on GKE Dataplane V2).
+  - to:
+    - ipBlock: { cidr: 169.254.169.254/32 }
+    - ipBlock: { cidr: 169.254.169.252/32 }
+    ports:
+    - port: 80
+      protocol: TCP
+    - port: 988
       protocol: TCP
 {{- end }}

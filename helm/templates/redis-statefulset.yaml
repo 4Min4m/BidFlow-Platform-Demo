@@ -22,6 +22,11 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
+        # redis:7-alpine's image USER is root (its entrypoint drops privs via
+        # su-exec). We bypass the entrypoint with `command:`, so pin the UID
+        # explicitly or kubelet rejects the pod under runAsNonRoot.
+        runAsUser: 999
+        runAsGroup: 999
         fsGroup: 999   # redis:7-alpine's built-in "redis" gid, needed to chown the PVC
         seccompProfile: { type: RuntimeDefault }
       containers:

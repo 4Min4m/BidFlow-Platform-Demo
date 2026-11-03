@@ -15,7 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY Gemfile Gemfile.lock ./
 COPY app.rb .
-USER bidflow:bidflow
+# Numeric UID so kubelet can verify runAsNonRoot (a named user fails that check)
+USER 10001:10001
 EXPOSE 4567
 ENV RACK_ENV=production
 CMD ["bundle", "exec", "ruby", "app.rb"]
