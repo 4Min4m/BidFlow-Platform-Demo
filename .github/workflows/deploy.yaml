@@ -4,6 +4,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 env:
   GKE_CLUSTER: bidflow-autopilot
@@ -15,14 +16,98 @@ permissions:
   id-token: write   # required for keyless Workload Identity Federation
 
 jobs:
-  build:
+  # ---------------------------------------------------------------------
+  # 1. Cloud-free checks: run on every push/PR, need no GCP credentials.
+  # ---------------------------------------------------------------------
+  lint-and-test:
     runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: app/go-bidder/go.mod
+        cache-dependency-path: app/go-bidder/go.sum
+
+    - name: Go vet + build
+      working-directory: app/go-bidder
+      run: |
+        test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt needed"; exit 1; }
+        go vet ./...
+        go build ./...
+
+    - name: Ruby syntax check
+      run: ruby -c app/ruby-bidder/app.rb
+
+    - name: Python log parser self-test
+      run: |
+        printf '%s\n' '{"id":"a","amount":10}' 'not json' '{"id":"b","amount":11}' \
+          '{"id":"c","amount":12}' '{"id":"d","amount":10}' '{"id":"e","amount":11}' \
+          '{"id":"f","amount":500}' > /tmp/bids.log
+        python3 scripts/parsing/log_parser.py /tmp/bids.log
+
+    - uses: azure/setup-helm@v4
+      with:
+        version: v3.15.0
+
+    - name: Helm lint + render
+      run: |
+        helm lint helm/
+        helm template bidflow-app helm/ --namespace bidflow > /tmp/rendered.yaml
+        echo "Rendered $(grep -c '^kind:' /tmp/rendered.yaml) Kubernetes objects"
+
+  # ---------------------------------------------------------------------
+  # 2. Build both images and smoke-test them end to end: a real bid goes
+  #    through go-bidder -> ruby-bidder -> Redis inside the runner.
+  # ---------------------------------------------------------------------
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build images
+      run: |
+        docker build -t bidflow/go-bidder:${{ github.sha }} app/go-bidder
+        docker build -t bidflow/ruby-bidder:${{ github.sha }} app/ruby-bidder
+
+    - name: End-to-end smoke test
+      run: |
+        docker network create bidflow
+        docker run -d --name redis --network bidflow redis:7-alpine
+        docker run -d --name ruby-bidder --network bidflow -e REDIS_HOST=redis \
+          bidflow/ruby-bidder:${{ github.sha }}
+        docker run -d --name go-bidder --network bidflow -p 8080:8080 \
+          -e RUBY_SERVICE_URL=http://ruby-bidder:4567 \
+          bidflow/go-bidder:${{ github.sha }}
+        for i in $(seq 1 30); do curl -fs localhost:8080/ready && break; sleep 1; done
+        echo
+        code=$(curl -s -o /tmp/resp -w '%{http_code}' -X POST localhost:8080/bid \
+          -H 'Content-Type: application/json' -d '{"id":"ci-smoke","amount":42.5}')
+        cat /tmp/resp; echo
+        test "$code" = "201"
+        docker exec redis redis-cli GET bid:ci-smoke | grep -q 42.5
+        bad=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/bid -d '{"id":"x","amount":-1}')
+        test "$bad" = "400"
+        echo "Smoke test passed: bid crossed Go -> Ruby -> Redis"
+
+    - name: Dump logs on failure
+      if: failure()
+      run: for c in go-bidder ruby-bidder redis; do echo "== $c"; docker logs $c; done
+
+  # ---------------------------------------------------------------------
+  # 3. Publish + deploy: only on main, and only once the GCP repo
+  #    variables from `terraform output` are configured.
+  # ---------------------------------------------------------------------
+  publish:
+    needs: build-and-smoke-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && vars.WIF_PROVIDER != ''
     strategy:
       matrix:
         service: [go-bidder, ruby-bidder]
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
     - name: Authenticate to GCP (Workload Identity Federation, no key file)
       uses: google-github-actions/auth@v2
@@ -30,38 +115,22 @@ jobs:
         workload_identity_provider: ${{ vars.WIF_PROVIDER }}
         service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
 
-    - name: Setup gcloud
-      uses: google-github-actions/setup-gcloud@v2
+    - uses: google-github-actions/setup-gcloud@v2
 
     - name: Configure Docker for Artifact Registry
       run: gcloud auth configure-docker "${GKE_REGION}-docker.pkg.dev" --quiet
 
-    - name: Build image
+    - name: Build and push (immutable SHA tag)
       run: |
-        cd app/${{ matrix.service }}
-        docker build -t "${ARTIFACT_REGISTRY}/${{ matrix.service }}:${{ github.sha }}" .
-
-    - name: Smoke test (health check)
-      run: |
-        PORT=4567
-        if [ "${{ matrix.service }}" = "go-bidder" ]; then PORT=8080; fi
-        docker run -d -p "${PORT}:${PORT}" --name test-${{ matrix.service }} \
-          "${ARTIFACT_REGISTRY}/${{ matrix.service }}:${{ github.sha }}"
-        sleep 5
-        curl -f "http://localhost:${PORT}/health" || { echo "Health check failed"; docker logs test-${{ matrix.service }}; docker rm -f test-${{ matrix.service }}; exit 1; }
-        docker rm -f test-${{ matrix.service }}
-
-    - name: Push image (immutable SHA tag)
-      if: github.ref == 'refs/heads/main'
-      run: docker push "${ARTIFACT_REGISTRY}/${{ matrix.service }}:${{ github.sha }}"
+        docker build -t "${ARTIFACT_REGISTRY}/${{ matrix.service }}:${{ github.sha }}" app/${{ matrix.service }}
+        docker push "${ARTIFACT_REGISTRY}/${{ matrix.service }}:${{ github.sha }}"
 
   deploy:
-    needs: build
+    needs: publish
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && vars.WIF_PROVIDER != ''
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
     - name: Authenticate to GCP (Workload Identity Federation, no key file)
       uses: google-github-actions/auth@v2
@@ -69,22 +138,16 @@ jobs:
         workload_identity_provider: ${{ vars.WIF_PROVIDER }}
         service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
 
-    - name: Setup gcloud
-      uses: google-github-actions/setup-gcloud@v2
+    - uses: google-github-actions/setup-gcloud@v2
+      with:
+        install_components: gke-gcloud-auth-plugin
 
     - name: Get GKE credentials
       run: gcloud container clusters get-credentials "${GKE_CLUSTER}" --region "${GKE_REGION}"
 
-    - name: Install GKE auth plugin
-      run: gcloud components install gke-gcloud-auth-plugin --quiet
-
-    - name: Setup Helm
-      uses: azure/setup-helm@v4
+    - uses: azure/setup-helm@v4
       with:
         version: v3.15.0
-
-    - name: Create namespace if needed
-      run: kubectl create namespace bidflow --dry-run=client -o yaml | kubectl apply -f -
 
     - name: Deploy with Helm (push-based GitOps)
       run: |
