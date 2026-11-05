@@ -255,6 +255,22 @@
 
   .placeholder.video { grid-column: 1 / -1; min-height: 220px; }
 
+  .shot {
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .proof-grid.shots { grid-template-columns: 1fr; gap: 22px; }
+  .shot img, .shot video { display: block; width: 100%; height: auto; background: var(--ink); }
+  .shot a { display: block; }
+  .shot a:hover img { opacity: 0.92; }
+  .shot figcaption { padding: 12px 14px 14px; font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--line); }
+  .shot .ph-title { display: block; font-family: var(--mono); font-size: 0.82rem; color: var(--text); margin-bottom: 4px; }
+
   /* ---------- Demonstrates list ---------- */
 
   .demo-list { margin-top: 22px; border-top: 1px solid var(--line); }
@@ -341,7 +357,7 @@
         </div>
       </div>
 
-      <p class="wf-caption">Illustrative — the real thing is one screenshot away, see “Proof it runs” below.</p>
+      <p class="wf-caption">Illustrative. The real Jaeger trace is in “Proof it runs” below.</p>
     </div>
   </header>
 
@@ -424,29 +440,27 @@
     <div class="tick"></div>
     <div class="span-label">proof it runs</div>
     <h2 style="font-size:1.4rem; margin-bottom:10px;">Not just a diagram</h2>
-    <p class="proof-intro">Screenshots and a short walkthrough from an actual deploy, captured on my own GCP project.</p>
+    <p class="proof-intro">Captured from a live run of this repo's own Go and Ruby images (Docker, locally) with Redis and Jaeger. Same containers the Helm chart deploys to GKE; every number and trace ID below is real output.</p>
 
-    <div class="proof-grid">
-      <div class="placeholder">
-        <div class="ph-icon">◔</div>
-        <div class="ph-title">Cross-language trace</div>
-        <div class="ph-hint">Screenshot — Jaeger UI, one trace ID showing both go-bidder and ruby-bidder spans</div>
-      </div>
-      <div class="placeholder">
-        <div class="ph-icon">◔</div>
-        <div class="ph-title">HPA scaling under load</div>
-        <div class="ph-hint">Screenshot or GIF — `kubectl get hpa -w` with replica count climbing</div>
-      </div>
-      <div class="placeholder">
-        <div class="ph-icon">◔</div>
-        <div class="ph-title">CI/CD pipeline run</div>
-        <div class="ph-hint">Screenshot — GitHub Actions run: build → push → helm upgrade, all green</div>
-      </div>
-      <div class="placeholder video">
-        <div class="ph-icon">▷</div>
-        <div class="ph-title">60-second walkthrough</div>
-        <div class="ph-hint">Video — a bid going in through curl and the matching trace appearing in Jaeger</div>
-      </div>
+    <div class="proof-grid shots">
+      <figure class="shot">
+        <video controls preload="metadata" playsinline poster="assets/walkthrough-poster.jpg">
+          <source src="assets/walkthrough.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="ph-title">60-second walkthrough</span>A bid goes in through curl, gets rejected or stored, and the matching trace is looked up in Jaeger by the trace_id from Ruby's log.</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="assets/jaeger-trace.png" target="_blank" rel="noopener"><img src="assets/jaeger-trace.png" alt="Jaeger UI showing one trace with 5 spans across bidflow-go-bidder and bidflow-ruby-bidder, including a Redis SET span" loading="lazy" width="1440" height="1000"></a>
+        <figcaption><span class="ph-title">Cross-language trace</span>One trace ID, two services, five spans: Go handler → forward → HTTP client → Ruby handler → Redis SET.</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="assets/smoke-test.png" target="_blank" rel="noopener"><img src="assets/smoke-test.png" alt="Terminal: valid bid returns 201 and lands in Redis, invalid bid returns 400, Ruby log carries the trace_id" loading="lazy" width="1100" height="739"></a>
+        <figcaption><span class="ph-title">End-to-end smoke test</span>Valid bid → 201 and stored in Redis; invalid bid → 400 in Go; Ruby's JSON log carries the trace_id.</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="assets/load-test-metrics.png" target="_blank" rel="noopener"><img src="assets/load-test-metrics.png" alt="Terminal: 3,000-bid load test results and Prometheus metrics from both services" loading="lazy" width="1100" height="500"></a>
+        <figcaption><span class="ph-title">Load test + Prometheus metrics</span>3,000 bids at 16-way concurrency; both services' /metrics agree on every accepted and rejected bid.</figcaption>
+      </figure>
     </div>
   </section>
 
